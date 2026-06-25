@@ -1,0 +1,1 @@
+ALTER TABLE `kwonri` ADD `photos` json;

@@ -1,0 +1,1 @@
+ALTER TABLE `kwonri` ADD `dealType` enum('monthly','sale') DEFAULT 'monthly' NOT NULL;
