@@ -8,7 +8,7 @@ function fmtAmt(val: string | number | null | undefined): string {
   if (!val) return '';
   const n = typeof val === 'string' ? parseFloat(val) : val;
   if (!n || isNaN(n)) return '';
-  if (n >= 10000) return `${(n / 10000).toFixed(n % 10000 === 0 ? 0 : 1)}억`;
+  if (n >= 10000) return `${n.toLocaleString()}만`;
   return `${Math.round(n).toLocaleString()}만`;
 }
 function fmtDate(d: Date | string | null | undefined): string {

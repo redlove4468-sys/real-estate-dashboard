@@ -39,6 +39,7 @@ export const kwonriRouter = router({
       maxArea: z.number().optional(),      // 면적 최댓값 (평)
       dealType: z.enum(["monthly", "sale", "all"]).optional(), // 거래유형 필터
       typeFilter: z.string().optional(), // 종류(담당자) 필터
+      branchFilter: z.string().optional(), // 지점 필터 (ABC부동산/글로벌부동산)
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -87,6 +88,11 @@ export const kwonriRouter = router({
       // 종류 필터
       if (input.typeFilter?.trim()) {
         conditions.push(eq(kwonri.type, input.typeFilter.trim()));
+      }
+
+      // 지점 필터
+      if (input.branchFilter?.trim()) {
+        conditions.push(eq(kwonri.category, input.branchFilter.trim()));
       }
 
       // 지역 필터 (주소 또는 위치에서 검색) - 콤마 구분 다중 검색 지원
@@ -175,6 +181,7 @@ export const kwonriRouter = router({
           createdAt: kwonri.createdAt,
           dealType: kwonri.dealType,
           type: kwonri.type,  // 담당자명 (종류 필드에 저장됨)
+          category: kwonri.category,
           // 변동내역 최신 날짜 (sql.raw로 컬럼 참조 - 파라미터 바인딩 방지)
           lastHistoryDate: sql<Date | null>`(SELECT MAX(h.date) FROM kwonri_history h WHERE h.kwonriId = kwonri.id)`,
           // 작업입력 최신 날짜
@@ -447,7 +454,8 @@ export const kwonriRouter = router({
       manager: z.string().optional(),
       industry: z.string().optional(),
       dealType: z.enum(["monthly", "sale", "all"]).optional(),
-      typeFilter: z.string().optional(), // 종류 필터
+      typeFilter: z.string().optional(),
+      branchFilter: z.string().optional(),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -460,6 +468,9 @@ export const kwonriRouter = router({
       }
       if (input.typeFilter?.trim()) {
         conditions.push(eq(kwonri.type, input.typeFilter.trim()));
+      }
+      if (input.branchFilter?.trim()) {
+        conditions.push(eq(kwonri.category, input.branchFilter.trim()));
       }
       // 지역 필터 - 콤마 구분 다중 검색
       if (input.areaSearch?.trim()) {
@@ -531,6 +542,7 @@ export const kwonriRouter = router({
           dealType: kwonri.dealType,
           lat: kwonri.lat,
           lng: kwonri.lng,
+          category: kwonri.category,
         })
         .from(kwonri)
         .where(conditions.length > 0 ? and(...conditions) : undefined)

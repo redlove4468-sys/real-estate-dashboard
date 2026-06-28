@@ -23,7 +23,7 @@ function formatAmt(val: string | number | null | undefined) {
   if (!val) return null;
   const n = typeof val === "string" ? parseFloat(val) : val;
   if (!n || isNaN(n)) return null;
-  if (n >= 10000) return `${(n / 10000).toFixed(n % 10000 === 0 ? 0 : 1)}억`;
+  if (n >= 10000) return `${n.toLocaleString()}만`;
   return `${n.toLocaleString()}만`;
 }
 
@@ -67,6 +67,7 @@ export default function CustomerListView({ isAuthenticated }: Props) {
   const [showFilters, setShowFilters] = useState(false);
   const [manager, setManager] = useState("");
   const [grade, setGrade] = useState("");
+  const [branchFilter, setBranchFilter] = useState("");
   const [kwonriPopupId, setKwonriPopupId] = useState<number | null>(null);
   // 추진내역 인라인 폼
   const [showProgressForm, setShowProgressForm] = useState(false);
@@ -82,6 +83,7 @@ export default function CustomerListView({ isAuthenticated }: Props) {
     sortBy, sortOrder,
     manager: manager || undefined,
     grade: grade || undefined,
+    branchFilter: branchFilter || undefined,
   });
 
   const { data: managers } = trpc.customer.managers.useQuery();
@@ -267,6 +269,12 @@ export default function CustomerListView({ isAuthenticated }: Props) {
                 placeholder="등급 검색 (예: 이하영, 신경민)"
                 className="w-full text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none placeholder:text-muted-foreground/50"
               />
+              <select value={branchFilter} onChange={e => { setBranchFilter(e.target.value); setPage(1); }}
+                className="w-full text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none">
+                <option value="">지점 전체</option>
+                <option value="ABC부동산">ABC부동산</option>
+                <option value="글로벌부동산">글로벌부동산</option>
+              </select>
             </div>
           )}
         </div>

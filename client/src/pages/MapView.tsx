@@ -28,7 +28,7 @@ function formatAmt(val: string | number | null | undefined) {
   if (!val) return null;
   const n = typeof val === 'string' ? parseFloat(val) : val;
   if (!n || isNaN(n)) return null;
-  if (n >= 10000) return `${(n / 10000).toFixed(n % 10000 === 0 ? 0 : 1)}억`;
+  if (n >= 10000) return `${n.toLocaleString()}만`;
   return `${n.toLocaleString()}만`;
 }
 
@@ -83,6 +83,7 @@ interface MarkerData {
   rentArea?: string | null;
   lat?: number;
   lng?: number;
+  category?: string | null;
 }
 
 export default function MapView({ isAuthenticated }: Props) {
@@ -113,6 +114,7 @@ export default function MapView({ isAuthenticated }: Props) {
   const [minTotal, setMinTotal] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
 
   const { data: typeList } = trpc.kwonri.types.useQuery();
 
@@ -121,7 +123,7 @@ export default function MapView({ isAuthenticated }: Props) {
     minDeposit, maxDeposit, minMonthly, maxMonthly, minPremium, maxPremium,
     minTotal, maxTotal,
     dealType !== 'all' ? dealType : '',
-    typeFilter,
+    typeFilter, branchFilter,
   ].filter(Boolean).length;
 
   const { data } = trpc.kwonri.allForMap.useQuery({
@@ -140,6 +142,7 @@ export default function MapView({ isAuthenticated }: Props) {
     maxTotal: maxTotal ? parseFloat(maxTotal) : undefined,
     dealType: dealType !== 'all' ? dealType : undefined,
     typeFilter: typeFilter || undefined,
+    branchFilter: branchFilter || undefined,
   });
 
   const clearMarkers = useCallback(() => {
@@ -252,6 +255,7 @@ export default function MapView({ isAuthenticated }: Props) {
       rentArea: i.rentArea,
       lat: i.lat != null ? parseFloat(String(i.lat)) : undefined,
       lng: i.lng != null ? parseFloat(String(i.lng)) : undefined,
+      category: i.category,
     }));
     setTimeout(() => geocodeAndPlace(items, mapRef.current!), 50);
   }, [data, mapReady, geocodeAndPlace]);
@@ -265,6 +269,7 @@ export default function MapView({ isAuthenticated }: Props) {
     setMinTotal(''); setMaxTotal('');
     setDealType('all');
     setTypeFilter('');
+    setBranchFilter('');
   };
 
   return (
@@ -309,6 +314,17 @@ export default function MapView({ isAuthenticated }: Props) {
               </button>
             ))}
           </div>
+
+          {/* 지점 필터 */}
+          <select
+            value={branchFilter}
+            onChange={e => setBranchFilter(e.target.value)}
+            className="text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none"
+          >
+            <option value="">전체 지점</option>
+            <option value="ABC부동산">ABC부동산</option>
+            <option value="글로벌부동산">글로벌부동산</option>
+          </select>
 
           {/* 범례 */}
           <div className="hidden md:flex items-center gap-2 ml-1">
@@ -452,6 +468,12 @@ export default function MapView({ isAuthenticated }: Props) {
                   {selectedItem.dealType === 'sale' && (
                     <span className="shrink-0 text-[9px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-sm font-medium">매매</span>
                   )}
+                  {selectedItem.category === '글로벌부동산' && (
+                    <span className="shrink-0 text-[9px] px-1 py-0.5 bg-purple-100 text-purple-700 border border-purple-300 rounded-sm font-bold">글</span>
+                  )}
+                  {selectedItem.category === 'ABC부동산' && (
+                    <span className="shrink-0 text-[9px] px-1 py-0.5 bg-rose-100 text-rose-700 border border-rose-300 rounded-sm font-bold">에</span>
+                  )}
                 </div>
                 <div className="text-[11px] text-gray-500">
                   {isAuthenticated
@@ -522,6 +544,11 @@ export default function MapView({ isAuthenticated }: Props) {
               {selectedItem.receivedAt && (
                 <div className="flex justify-between text-[10px] text-gray-400">
                   <span>등록일</span><span>{formatDate(selectedItem.receivedAt)}</span>
+                </div>
+              )}
+              {selectedItem.updatedAt && (
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>수정일</span><span>{formatDate(selectedItem.updatedAt)}</span>
                 </div>
               )}
             </div>

@@ -21,6 +21,7 @@ export const clientRouter = router({
       manager: z.string().optional(),
       grade: z.string().optional(),
       wantIndustry: z.string().optional(),
+      branchFilter: z.string().optional(), // 지점 필터
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -46,6 +47,7 @@ export const clientRouter = router({
       if (input.manager) conditions.push(eq(client.manager, input.manager));
       if (input.grade) conditions.push(like(client.grade, `%${input.grade}%`));
       if (input.wantIndustry) conditions.push(like(client.wantIndustry, `%${input.wantIndustry}%`));
+      if (input.branchFilter?.trim()) conditions.push(eq(client.category, input.branchFilter.trim()));
 
       const where = conditions.length > 0 ? and(...conditions) : undefined;
 

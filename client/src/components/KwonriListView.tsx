@@ -34,7 +34,7 @@ function formatAmt(val: string | number | null | undefined) {
   if (!val) return null;
   const n = typeof val === "string" ? parseFloat(val) : val;
   if (!n || isNaN(n)) return null;
-  if (n >= 10000) return `${(n / 10000).toFixed(n % 10000 === 0 ? 0 : 1)}억`;
+  if (n >= 10000) return `${n.toLocaleString()}만`;
   return `${n.toLocaleString()}만`;
 }
 
@@ -76,6 +76,7 @@ export default function KwonriListView({ isAuthenticated }: Props) {
   const [maxTotal, setMaxTotal] = useState("");        // 합계 최대
   const [dealType, setDealType] = useState<DealType>("all"); // 월세/매매
   const [typeFilter, setTypeFilter] = useState(""); // 종류 필터
+  const [branchFilter, setBranchFilter] = useState(""); // 지점 필터
 
   const PAGE_SIZE = 50;
 
@@ -85,6 +86,7 @@ export default function KwonriListView({ isAuthenticated }: Props) {
     areaSearch, floorSearch, minArea, maxArea, minMonthly, maxMonthly, minTotal, maxTotal,
     dealType !== "all" ? dealType : "",
     typeFilter,
+    branchFilter,
   ].filter(Boolean).length;
 
   const { data, isLoading, refetch } = trpc.kwonri.list.useQuery({
@@ -109,6 +111,7 @@ export default function KwonriListView({ isAuthenticated }: Props) {
     maxArea: maxArea ? parseFloat(maxArea) : undefined,
     dealType: dealType !== "all" ? dealType : undefined,
     typeFilter: typeFilter || undefined,
+    branchFilter: branchFilter || undefined,
   });
 
   const { data: managers } = trpc.kwonri.managers.useQuery();
@@ -392,6 +395,20 @@ export default function KwonriListView({ isAuthenticated }: Props) {
                 </select>
               </div>
 
+              {/* 지점 */}
+              <div>
+                <div className="text-[10px] text-muted-foreground mb-1">지점</div>
+                <select
+                  value={branchFilter}
+                  onChange={e => { setBranchFilter(e.target.value); setPage(1); }}
+                  className="w-full text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none"
+                >
+                  <option value="">전체</option>
+                  <option value="ABC부동산">ABC부동산</option>
+                  <option value="글로벌부동산">글로벌부동산</option>
+                </select>
+              </div>
+
               {/* 종류 */}
               <div>
                 <div className="text-[10px] text-muted-foreground mb-1">종류</div>
@@ -434,6 +451,12 @@ export default function KwonriListView({ isAuthenticated }: Props) {
                     )}
                     {(item as any).type && (
                       <span className="text-[10px] px-1 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-sm font-medium">{(item as any).type}</span>
+                    )}
+                    {(item as any).category === '글로벌부동산' && (
+                      <span className="text-[9px] px-1 py-0.5 bg-purple-100 text-purple-700 border border-purple-300 rounded-sm font-bold">글</span>
+                    )}
+                    {(item as any).category === 'ABC부동산' && (
+                      <span className="text-[9px] px-1 py-0.5 bg-rose-100 text-rose-700 border border-rose-300 rounded-sm font-bold">에</span>
                     )}
                   </div>
                 </div>

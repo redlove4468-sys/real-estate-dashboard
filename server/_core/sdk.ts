@@ -217,7 +217,7 @@ class SDKServer {
 
       if (
         !isNonEmptyString(openId) ||
-        !isNonEmptyString(appId) ||
+        typeof appId !== "string" ||
         !isNonEmptyString(name)
       ) {
         return null;
