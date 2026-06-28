@@ -90,6 +90,7 @@ export default function MapView({ isAuthenticated }: Props) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [dealType, setDealType] = useState<DealType>('all');
   const [selectedItem, setSelectedItem] = useState<MarkerData | null>(null);
+  const [selectedCluster, setSelectedCluster] = useState<{ address: string; items: MarkerData[] } | null>(null);
   const [detailCardId, setDetailCardId] = useState<number | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [geocodedCount, setGeocodedCount] = useState(0);
@@ -150,19 +151,37 @@ export default function MapView({ isAuthenticated }: Props) {
     markersRef.current = [];
   }, []);
 
-  // 카카오 마커 하나 생성 헬퍼
-  const placeMarker = useCallback((map: any, item: MarkerData, lat: number, lng: number, placed: { count: number }) => {
-    const color = item.dealType === 'sale'
-      ? '#f97316'
-      : item.status === 'active' ? '#22c55e' : '#9ca3af';
+  // 마커 색상 결정
+  function getMarkerColor(item: MarkerData): string {
+    if (item.dealType === 'sale') return '#f97316';
+    if (item.status !== 'active') return '#9ca3af';
+    if (item.category === '글로벌부동산') return '#a855f7';
+    return '#22c55e';
+  }
+
+  // 클러스터 마커 생성 (동일 주소 여러 매물)
+  const placeClusterMarker = useCallback((map: any, items: MarkerData[], lat: number, lng: number) => {
+    const count = items.length;
+
+    // 클러스터 대표 색상: 혼합=남색, 단일지점 따라감
+    let color: string;
+    if (count === 1) {
+      color = getMarkerColor(items[0]);
+    } else {
+      const hasGlobal = items.some(i => i.category === '글로벌부동산');
+      const hasABC = items.some(i => i.category === 'ABC부동산');
+      if (hasGlobal && hasABC) color = '#6366f1';
+      else if (hasGlobal) color = '#a855f7';
+      else color = '#22c55e';
+    }
 
     const markerEl = document.createElement('div');
-    markerEl.style.cssText = `
-      width:14px;height:14px;border-radius:50%;
-      background:${color};border:2px solid white;
-      box-shadow:0 1px 4px rgba(0,0,0,0.35);
-      cursor:pointer;
-    `;
+    if (count === 1) {
+      markerEl.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.35);cursor:pointer;`;
+    } else {
+      markerEl.style.cssText = `min-width:22px;height:22px;border-radius:11px;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.35);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0 4px;`;
+      markerEl.innerHTML = `<span style="color:white;font-size:11px;font-weight:700;line-height:1;">${count}</span>`;
+    }
 
     const overlay = new window.kakao.maps.CustomOverlay({
       position: new window.kakao.maps.LatLng(lat, lng),
@@ -171,13 +190,17 @@ export default function MapView({ isAuthenticated }: Props) {
     });
 
     markerEl.addEventListener('click', () => {
-      setSelectedItem({ ...item, lat, lng });
       setDetailCardId(null);
+      if (count === 1) {
+        setSelectedItem({ ...items[0], lat, lng });
+        setSelectedCluster(null);
+      } else {
+        setSelectedCluster({ address: items[0].address || '', items });
+        setSelectedItem(null);
+      }
     });
 
     markersRef.current.push(overlay);
-    placed.count++;
-    setGeocodedCount(placed.count);
   }, []);
 
   const geocodeAndPlace = useCallback(async (items: MarkerData[], map: any) => {
@@ -187,28 +210,38 @@ export default function MapView({ isAuthenticated }: Props) {
     setGeocodedCount(0);
     setTotalCount(items.length);
 
-    const placed = { count: 0 };
-
-    // 1단계: DB에 좌표가 있는 물건은 즉시 마커 표시
-    const needGeocode: MarkerData[] = [];
+    // 주소별로 그룹핑 (동일 주소 = 클러스터)
+    const addrGroups = new Map<string, MarkerData[]>();
     for (const item of items) {
-      if (item.lat && item.lng) {
-        placeMarker(map, item, item.lat, item.lng, placed);
+      const key = (item.address || '').trim();
+      if (!addrGroups.has(key)) addrGroups.set(key, []);
+      addrGroups.get(key)!.push(item);
+    }
+
+    let placedCount = 0;
+
+    // 1단계: DB에 좌표 있는 그룹은 즉시 마커
+    const needGeocode: [string, MarkerData[]][] = [];
+    for (const [addr, group] of addrGroups) {
+      const first = group.find(i => i.lat && i.lng);
+      if (first?.lat && first?.lng) {
+        placeClusterMarker(map, group, first.lat, first.lng);
+        placedCount += group.length;
+        setGeocodedCount(placedCount);
       } else {
-        needGeocode.push(item);
+        needGeocode.push([addr, group]);
       }
     }
 
-    // 2단계: 좌표 없는 물건은 카카오 Geocoding
+    // 2단계: 좌표 없는 그룹은 Geocoding (주소별 1회만)
     if (needGeocode.length > 0 && window.kakao?.maps?.services) {
       const geocoder = new window.kakao.maps.services.Geocoder();
-      for (const item of needGeocode) {
+      for (const [addr, group] of needGeocode) {
         if (geocodingAbortRef.current) break;
-        const rawAddress = item.address || '';
-        if (!rawAddress) continue;
+        if (!addr) continue;
         const queryAddr = isAuthenticated
-          ? normalizeAddress(rawAddress)
-          : extractDistrictAddress(rawAddress);
+          ? normalizeAddress(addr)
+          : extractDistrictAddress(addr);
         if (!queryAddr) continue;
 
         await new Promise<void>((resolve) => {
@@ -216,7 +249,9 @@ export default function MapView({ isAuthenticated }: Props) {
             if (status === window.kakao.maps.services.Status.OK && result.length > 0) {
               const lat = parseFloat(result[0].y);
               const lng = parseFloat(result[0].x);
-              placeMarker(map, item, lat, lng, placed);
+              placeClusterMarker(map, group, lat, lng);
+              placedCount += group.length;
+              setGeocodedCount(placedCount);
             }
             resolve();
           });
@@ -226,7 +261,7 @@ export default function MapView({ isAuthenticated }: Props) {
     }
 
     setIsGeocoding(false);
-  }, [isAuthenticated, clearMarkers, placeMarker]);
+  }, [isAuthenticated, clearMarkers, placeClusterMarker]);
 
   const handleMapReady = useCallback((map: any) => {
     mapRef.current = map;
@@ -270,6 +305,8 @@ export default function MapView({ isAuthenticated }: Props) {
     setDealType('all');
     setTypeFilter('');
     setBranchFilter('');
+    setSelectedItem(null);
+    setSelectedCluster(null);
   };
 
   return (
@@ -329,13 +366,19 @@ export default function MapView({ isAuthenticated }: Props) {
           {/* 범례 */}
           <div className="hidden md:flex items-center gap-2 ml-1">
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> 관리(월세)
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> ABC
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block" /> 글로벌
             </span>
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" /> 매매
             </span>
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <span className="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block" /> 보류
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" /> 혼합
             </span>
           </div>
 
@@ -455,6 +498,52 @@ export default function MapView({ isAuthenticated }: Props) {
           onMapReady={handleMapReady}
           className="w-full h-full"
         />
+
+        {/* 클러스터 리스트 패널 (동일 주소 여러 매물) */}
+        {selectedCluster && !detailCardId && (
+          <div className="absolute top-4 right-4 left-4 md:left-auto bg-white rounded-xl shadow-xl border border-border md:w-[300px] z-10 flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <div>
+                <div className="font-semibold text-[13px] text-gray-900 truncate">{selectedCluster.address}</div>
+                <div className="text-[11px] text-muted-foreground">{selectedCluster.items.length}개 물건</div>
+              </div>
+              <button onClick={() => setSelectedCluster(null)}
+                className="text-gray-400 hover:text-gray-700 text-xl leading-none ml-2">×</button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {selectedCluster.items.map((item, idx) => (
+                <div key={item.id} onClick={() => { setSelectedItem({ ...item }); setSelectedCluster(null); }}
+                  className={`px-4 py-2.5 cursor-pointer hover:bg-accent/50 transition-colors ${idx > 0 ? 'border-t border-gray-100' : ''}`}>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${item.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    <span className="text-[12px] font-semibold text-gray-900 truncate flex-1">{item.name || '(물건명 없음)'}</span>
+                    {item.dealType === 'sale' && (
+                      <span className="text-[9px] px-1 py-0.5 bg-orange-100 text-orange-700 rounded-sm font-medium">매매</span>
+                    )}
+                    {item.category === '글로벌부동산' && (
+                      <span className="text-[9px] px-1 py-0.5 bg-purple-100 text-purple-700 border border-purple-300 rounded-sm font-bold">글</span>
+                    )}
+                    {item.category === 'ABC부동산' && (
+                      <span className="text-[9px] px-1 py-0.5 bg-rose-100 text-rose-700 border border-rose-300 rounded-sm font-bold">에</span>
+                    )}
+                  </div>
+                  {(item.realArea || item.rentArea || item.floors) && (
+                    <div className="text-[10px] text-gray-500 ml-3 mb-0.5">
+                      {item.realArea || item.rentArea ? `${item.realArea || item.rentArea}평` : ''}{item.floors ? ` · ${item.floors}` : ''}
+                    </div>
+                  )}
+                  <div className="ml-3 text-[10px] text-gray-500 space-y-0.5">
+                    {formatAmt(item.deposit) && <span>보 {formatAmt(item.deposit)}</span>}
+                    {formatAmt(item.premium) && <span className="ml-1">권 {formatAmt(item.premium)}</span>}
+                    {formatAmt(item.total) && <span className="ml-1">합 {formatAmt(item.total)}</span>}
+                    {formatAmt(item.monthlyRent) && <span className="ml-1">월 {formatAmt(item.monthlyRent)}</span>}
+                  </div>
+                  {item.manager && <div className="ml-3 text-[10px] text-gray-400 mt-0.5">{item.manager}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 선택된 물건 팝업 */}
         {selectedItem && !detailCardId && (
